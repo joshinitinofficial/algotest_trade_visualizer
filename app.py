@@ -134,5 +134,59 @@ if uploaded_file is not None:
     # ==============================
     # ALL TRADES
     # ==============================
-    st.subheader("📋 All Trades")
-    st.dataframe(df, use_container_width=True)
+    # ==============================
+    # OWS MONTHLY P&L SUMMARY (CLEAN WHEEL VIEW)
+    # ==============================
+    st.subheader("🌀 Option Wheel – Monthly Option P&L Summary")
+
+    ows_df = df.copy()
+
+    # Identify option trades only
+    opt_df = ows_df[ows_df["Strike"].notna()].copy()
+
+    # Option Type (AlgoTest OWS: PE side, but kept generic)
+    def option_type(row):
+        return "PE" if row["Position"] == -1 else "PE Buyback"
+
+    opt_df["OptionType"] = opt_df.apply(option_type, axis=1)
+
+    # Month
+    opt_df["Month"] = opt_df["TradedTime"].dt.to_period("M").astype(str)
+
+    # Cash impact per trade
+    opt_df["PnL"] = -opt_df["Position"] * opt_df["TradedPrice"] * opt_df["Quantity"]
+
+    # Monthly grouped P&L
+    monthly_pnl = (
+        opt_df.groupby([
+            "Month",
+            "Ticker",
+            "Strike",
+            "Expiry",
+        ])
+        .agg(
+            OptionType=("OptionType", "first"),
+            Contracts=("Quantity", "sum"),
+            Profit_Loss=("PnL", "sum")
+        )
+        .reset_index()
+        .sort_values(["Month", "Ticker"])
+    )
+
+    monthly_pnl.rename(columns={"Profit_Loss": "Profit / Loss (₹)"}, inplace=True)
+
+    st.dataframe(monthly_pnl, use_container_width=True)
+
+    # ==============================
+    # MONTH-WISE TOTAL OPTION P&L
+    # ==============================
+    st.subheader("💰 Month-wise Total Option P&L")
+
+    month_total = (
+        monthly_pnl.groupby("Month")["Profit / Loss (₹)"]
+        .sum()
+        .reset_index()
+    )
+
+    st.dataframe(month_total, use_container_width=True)
+    st.line_chart(month_total.set_index("Month")["Profit / Loss (₹)"])
