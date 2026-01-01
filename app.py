@@ -135,29 +135,23 @@ if uploaded_file is not None:
     # ALL TRADES
     # ==============================
     # ==============================
-    # OWS MONTHLY P&L SUMMARY (CLEAN WHEEL VIEW)
+    # OWS MONTHLY NET OPTION P&L (SELL + BUY MERGED)
     # ==============================
-    st.subheader("🌀 Option Wheel – Monthly Option P&L Summary")
+    st.subheader("🌀 Option Wheel – Monthly Net Option P&L")
 
     ows_df = df.copy()
 
-    # Identify option trades only
+    # Keep only option trades (ignore cash / underlying)
     opt_df = ows_df[ows_df["Strike"].notna()].copy()
-
-    # Option Type (AlgoTest OWS: PE side, but kept generic)
-    def option_type(row):
-        return "PE" if row["Position"] == -1 else "PE Buyback"
-
-    opt_df["OptionType"] = opt_df.apply(option_type, axis=1)
 
     # Month
     opt_df["Month"] = opt_df["TradedTime"].dt.to_period("M").astype(str)
 
-    # Cash impact per trade
+    # Unified P&L per execution
     opt_df["PnL"] = -opt_df["Position"] * opt_df["TradedPrice"] * opt_df["Quantity"]
 
-    # Monthly grouped P&L
-    monthly_pnl = (
+    # Group SELL + BUY into ONE net result
+    monthly_net = (
         opt_df.groupby([
             "Month",
             "Ticker",
@@ -165,25 +159,30 @@ if uploaded_file is not None:
             "Expiry",
         ])
         .agg(
-            OptionType=("OptionType", "first"),
             Contracts=("Quantity", "sum"),
-            Profit_Loss=("PnL", "sum")
+            Net_Profit_Loss=("PnL", "sum")
         )
         .reset_index()
-        .sort_values(["Month", "Ticker"])
+        .sort_values(["Month", "Ticker", "Strike"])
     )
 
-    monthly_pnl.rename(columns={"Profit_Loss": "Profit / Loss (₹)"}, inplace=True)
+    # Option type fixed for Wheel view
+    monthly_net.insert(3, "OptionType", "PE")
 
-    st.dataframe(monthly_pnl, use_container_width=True)
+    monthly_net.rename(
+        columns={"Net_Profit_Loss": "Profit / Loss (₹)"},
+        inplace=True,
+    )
+
+    st.dataframe(monthly_net, use_container_width=True)
 
     # ==============================
-    # MONTH-WISE TOTAL OPTION P&L
+    # MONTH-WISE TOTAL OPTION PROFIT
     # ==============================
-    st.subheader("💰 Month-wise Total Option P&L")
+    st.subheader("💰 Month-wise Total Option Profit (Net)")
 
     month_total = (
-        monthly_pnl.groupby("Month")["Profit / Loss (₹)"]
+        monthly_net.groupby("Month")["Profit / Loss (₹)"]
         .sum()
         .reset_index()
     )
